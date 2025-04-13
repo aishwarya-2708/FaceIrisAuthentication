@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<head><title>Iris Scan</title></head>
+<body>
+  <h2>👁️ Iris Scan for {{ user }}</h2>
+  <img src="{{ url_for('video_feed_iris') }}" width="600">
+  <form action="/verify_iris">
+    <button type="submit">Verify Iris</button>
+  </form>
+</body>
+</html>
