@@ -81,6 +81,9 @@
         const outputDiv = document.getElementById('output');
         const instructionsDiv = document.getElementById('instructions');
         
+        // Track face capture state
+        let faceCaptureState = 0;
+        
         // Update status periodically
         function updateStatus() {
             fetch('/get_status')
@@ -93,118 +96,162 @@
                         currentStage = data.status;
                         handleStageChange();
                     }
+                })
+                .catch(error => {
+                    console.error('Error fetching status:', error);
                 });
             
             setTimeout(updateStatus, 1000);
         }
         
-        // // Handle stage changes
-        // function handleStageChange() {
-        //     switch(currentStage) {
-        //         case 'ready':
-        //             videoSection.style.display = 'none';
-        //             startBtn.disabled = false;
-        //             break;
+        // Handle stage changes
+        function handleStageChange() {
+            console.log('Stage changed to:', currentStage);
+            
+            switch(currentStage) {
+                case 'ready':
+                    videoSection.style.display = 'none';
+                    startBtn.disabled = false;
+                    captureBtn.style.display = 'none';
+                    faceCaptureState = 0;
+                    break;
                     
-        //         case 'loading':
-        //             startBtn.disabled = true;
-        //             videoSection.style.display = 'none';
-        //             instructionsDiv.textContent = 'Loading dataset...';
-        //             break;
+                case 'loading':
+                    startBtn.disabled = true;
+                    videoSection.style.display = 'none';
+                    captureBtn.style.display = 'none';
+                    instructionsDiv.textContent = 'Loading dataset...';
+                    break;
                     
-        //         case 'face_capture':
-        //             videoSection.style.display = 'block';
-        //             captureBtn.style.display = 'block';
-        //             instructionsDiv.textContent = 'Face detection: Please look at the camera. Click "Capture" when ready.';
-        //             break;
+                case 'face_capture':
+                    videoSection.style.display = 'block';
+                    captureBtn.style.display = 'block';
+                    faceCaptureState = 0;
+                    instructionsDiv.textContent = 'Face detection: Please look at the camera. Click "Capture" when ready.';
+                    break;
                     
-        //         case 'iris_capture':
-        //             videoSection.style.display = 'block';
-        //             captureBtn.style.display = 'block';
-        //             instructionsDiv.textContent = 'Iris detection: Please look at the camera. Click "Capture" when ready.';
-        //             break;
+                case 'iris_capture':
+                    videoSection.style.display = 'block';
+                    captureBtn.style.display = 'block';
+                    instructionsDiv.textContent = 'Iris detection: Please look at the camera. Click "Capture" when ready.';
+                    break;
                     
-        //         case 'complete':
-        //             videoSection.style.display = 'none';
-        //             captureBtn.style.display = 'none';
-        //             break;
-        //     }
-        // }
+                case 'complete':
+                    videoSection.style.display = 'none';
+                    captureBtn.style.display = 'none';
+                    document.getElementById('video-feed').src = '';
+                    break;
+            }
+        }
         
         // Start authentication
         startBtn.addEventListener('click', () => {
+            console.log('Start authentication clicked');
             fetch('/start_authentication', { method: 'POST' })
-                .then(response => response.json());
+                .then(response => response.json())
+                .catch(error => {
+                    console.error('Error starting authentication:', error);
+                });
         });
         
-        // Update the capture button event handler
+        // Capture button event handler
+        // In your capture button event handler:
+// Capture button event handler
 captureBtn.addEventListener('click', () => {
+    console.log('Capture button clicked in stage:', currentStage);
+    
+    // Disable button during processing
+    captureBtn.disabled = true;
+    instructionsDiv.textContent = 'Processing...';
+    
     if (currentStage === 'face_capture') {
-        if (!document.querySelector('[data-face1-captured]')) {
+        if (!captureBtn.hasAttribute('data-face1-captured')) {
             // First face capture
-            fetch('/capture_face1', { method: 'POST' })
-                .then(response => response.json())
-                .then(() => {
-                    instructionsDiv.textContent = 'Face detection: Please slightly move your head. Click "Capture" again.';
+            fetch('/capture_face1', { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('First face capture failed');
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
                     captureBtn.setAttribute('data-face1-captured', 'true');
-                });
+                    instructionsDiv.textContent = 'Please slightly move your head. Click "Capture" again.';
+                } else {
+                    throw new Error(data.message || 'First face capture failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                instructionsDiv.textContent = `Error: ${error.message}`;
+            })
+            .finally(() => {
+                captureBtn.disabled = false;
+            });
         } else {
             // Second face capture
-            fetch('/capture_face2', { method: 'POST' })
-                .then(response => response.json())
-                .then(() => {
+            fetch('/capture_face2', { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Second face capture failed');
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    instructionsDiv.textContent = 'Face capture complete!';
                     captureBtn.style.display = 'none';
-                });
+                } else {
+                    throw new Error(data.message || 'Second face capture failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                instructionsDiv.textContent = `Error: ${error.message}`;
+            })
+            .finally(() => {
+                captureBtn.disabled = false;
+            });
         }
     } else if (currentStage === 'iris_capture') {
         // Iris capture
-        fetch('/capture_eye', { method: 'POST' })
-            .then(response => response.json())
-            .then(() => {
-                captureBtn.style.display = 'none';
-                // Stop the video feed after iris capture
-                document.getElementById('video-feed').src = '';
-            });
+        fetch('/capture_eye', { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Iris capture failed');
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'success') {
+                instructionsDiv.textContent = 'Iris captured successfully!';
+                setTimeout(() => {
+                    captureBtn.style.display = 'none';
+                    document.getElementById('video-feed').src = '';
+                }, 2000);
+            } else {
+                throw new Error(data.message || 'Iris capture failed');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            instructionsDiv.textContent = `Error: ${error.message}`;
+        })
+        .finally(() => {
+            captureBtn.disabled = false;
+        });
     }
 });
-
-// Update the status check to stop video feed when complete
-function handleStageChange() {
-    switch(currentStage) {
-        case 'ready':
-            videoSection.style.display = 'none';
-            startBtn.disabled = false;
-            break;
-            
-        case 'loading':
-            startBtn.disabled = true;
-            videoSection.style.display = 'none';
-            instructionsDiv.textContent = 'Loading dataset...';
-            break;
-            
-        case 'face_capture':
-            videoSection.style.display = 'block';
-            captureBtn.style.display = 'block';
-            instructionsDiv.textContent = 'Face detection: Please look at the camera. Click "Capture" when ready.';
-            // Reset face capture state
-            document.querySelector('[data-face1-captured]')?.remove();
-            break;
-            
-        case 'iris_capture':
-            videoSection.style.display = 'block';
-            captureBtn.style.display = 'block';
-            instructionsDiv.textContent = 'Iris detection: Please look at the camera. Click "Capture" when ready.';
-            break;
-            
-        case 'complete':
-            videoSection.style.display = 'none';
-            captureBtn.style.display = 'none';
-            // Stop the video feed
-            document.getElementById('video-feed').src = '';
-            break;
-    }
-}
-        
         // Initialize
         updateStatus();
         handleStageChange();
